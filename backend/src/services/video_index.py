@@ -47,7 +47,7 @@ class VideoIndexerService:
             raise
 
     def download_youtube_video(self, url: str, output_path: str = "temp_video.mp4") -> str:
-        """Downloads a video from YouTube using yt-dlp."""
+        """Downloads a video from YouTube using yt-dlp with browser cookie authentication."""
         logger.info(f"Downloading YouTube video: {url}")
         
         ydl_opts = {
@@ -56,6 +56,7 @@ class VideoIndexerService:
             'quiet': False,
             'no_warnings': True,
             'noplaylist': True,
+            'cookiesfrombrowser': ('chrome',),  # Use Chrome's cookies to bypass bot detection
         }
         
         try:
