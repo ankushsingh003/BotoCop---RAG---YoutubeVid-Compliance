@@ -15,29 +15,33 @@ class VideoIndexerService:
     and YouTube integration (yt-dlp).
     """
     def __init__(self):
-        self.region = os.getenv("REGION", "eu-north-1")
+        self.region = os.getenv("REGION", "eu-central-1")
         
         # Mapping AWS credentials from environment variables
         # Note: Using AWS_STORAGE_CONNECTION_STRING as Access Key and 
         # AWS_OPEN_AI_KEY as Secret Key as per current .ENV configuration
-        self.aws_access_key = os.getenv("AWS_STORAGE_CONNECTION_STRING")
-        self.aws_secret_key = os.getenv("AWS_OPEN_AI_KEY")
-        self.default_bucket = "orchestra00998"
+        self.aws_access_key = (os.getenv("AWS_STORAGE_CONNECTION_STRING") or "").strip().strip('"').strip("'")
+        self.aws_secret_key = (os.getenv("AWS_OPEN_AI_KEY") or "").strip().strip('"').strip("'")
+        self.default_bucket = "orchestra-frankfurt"
 
         if not self.aws_access_key or not self.aws_secret_key:
             logger.warning("AWS credentials not fully found in environment variables.")
 
         # Initialize AWS Session and Clients
         try:
+            # Strip quotes if present in .ENV
+            access_key = self.aws_access_key.strip('"').strip("'") if self.aws_access_key else None
+            secret_key = self.aws_secret_key.strip('"').strip("'") if self.aws_secret_key else None
+
             self.session = boto3.Session(
-                aws_access_key_id=self.aws_access_key,
-                aws_secret_access_key=self.aws_secret_key,
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
                 region_name=self.region
             )
             self.s3 = self.session.client("s3")
             self.rekognition = self.session.client("rekognition")
             self.transcribe = self.session.client("transcribe")
-            logger.info("AWS clients initialized successfully.")
+            logger.info(f"AWS clients initialized successfully in {self.region}.")
         except Exception as e:
             logger.error(f"Error initializing AWS clients: {e}")
             raise
@@ -47,7 +51,7 @@ class VideoIndexerService:
         logger.info(f"Downloading YouTube video: {url}")
         
         ydl_opts = {
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            'format': 'best[ext=mp4]/best',
             'outtmpl': output_path,
             'quiet': False,
             'no_warnings': True,
@@ -107,14 +111,56 @@ class VideoIndexerService:
         """Alias for get_analysis_results to maintain compatibility with nodes.py."""
         return self.get_analysis_results(job_id)
 
-    def extract_data(self, raw_insights: dict) -> dict:
-        """Extracts and cleans relevant data from Rekognition insights."""
-        logger.info("Extracting data from Rekognition insights")
+    def start_transcription_job(self, bucket: str, video_key: str, job_name: str) -> str:
+        """Starts an AWS Transcribe job for a video file."""
+        video_uri = f"s3://{bucket}/{video_key}"
+        logger.info(f"Starting transcription job {job_name} for {video_uri}")
         
-        if not raw_insights:
-            return self._empty_response("No insights data provided")
+        try:
+            # delete existing job if name collision occurs
+            try:
+                self.transcribe.delete_transcription_job(TranscriptionJobName=job_name)
+            except:
+                pass
 
-        labels = raw_insights.get("Labels", [])
+            self.transcribe.start_transcription_job(
+                TranscriptionJobName=job_name,
+                Media={'MediaFileUri': video_uri},
+                MediaFormat='mp4',
+                LanguageCode='en-US'
+            )
+            return job_name
+        except Exception as e:
+            logger.error(f"Failed to start transcription job: {e}")
+            raise
+
+    def get_transcription_text(self, job_name: str) -> str:
+        """Retrieves the transcript text from a finished job."""
+        try:
+            response = self.transcribe.get_transcription_job(TranscriptionJobName=job_name)
+            status = response['TranscriptionJob']['TranscriptionJobStatus']
+            
+            if status == 'COMPLETED':
+                transcript_url = response['TranscriptionJob']['Transcript']['TranscriptFileUri']
+                # Download transcript JSON
+                import requests
+                transcript_data = requests.get(transcript_url).json()
+                return transcript_data.get('results', {}).get('transcripts', [{}])[0].get('transcript', "")
+            elif status == 'FAILED':
+                logger.error(f"Transcription job failed: {response['TranscriptionJob'].get('FailureReason')}")
+                return ""
+            else:
+                logger.info(f"Transcription job {job_name} still in progress (status: {status})")
+                return ""
+        except Exception as e:
+            logger.error(f"Error fetching transcription results: {e}")
+            return ""
+
+    def extract_data(self, rek_insights: dict, transcript_text: str = "") -> dict:
+        """Extracts and cleans relevant data from Rekognition insights and Transcribe results."""
+        logger.info("Extracting combined data from Rekognition and Transcribe")
+        
+        labels = rek_insights.get("Labels", []) if rek_insights else []
         clean_labels = [
             {
                 "name": label.get("Label", {}).get("Name"),
@@ -125,13 +171,13 @@ class VideoIndexerService:
         ]
         
         # Check JobStatus
-        job_status = raw_insights.get("JobStatus", "IN_PROGRESS")
+        job_status = rek_insights.get("JobStatus", "IN_PROGRESS") if rek_insights else "FAILED"
         
         return {
-            "transcript": "",  # Placeholder for Transcribe results
+            "transcript": transcript_text or "",
             "ocr_text": [],    # Placeholder for Text Detection results
             "video_metadata": clean_labels,
-            "final_status": "success" if job_status == "SUCCEEDED" else "processing"
+            "final_status": "success" if job_status == "SUCCEEDED" else "failed" if job_status == "FAILED" else "processing"
         }
 
     def _empty_response(self, message: str) -> dict:

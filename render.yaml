@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: botocop-auditor
+    env: python
+    buildCommand: "./build.sh"
+    startCommand: "uv run uvicorn backend.src.api.server:app --host 0.0.0.0 --port 10000"
+    envVars:
+      - key: PORT
+        value: 10000
+      - key: REGION
+        sync: false
+      - key: AWS_STORAGE_CONNECTION_STRING
+        sync: false
+      - key: AWS_OPEN_AI_KEY
+        sync: false
+      - key: AWS_OPENAI_MODEL
+        sync: false
+      - key: AWS_OPENAI_EMBEDDING_DEPLOYMENT
+        sync: false
+      - key: AWS_SEARCH_ENDPOINT
+        sync: false
+      - key: AWS_SEARCH_INDEX_NAME
+        sync: false
