@@ -6,10 +6,24 @@
 
 ## 🚀 Key Features
 
-- **Automated Video Indexing**: Advanced visual and audio analysis using **AWS Rekognition**.
-- **Intelligent RAG**: Context-aware auditing using **AWS Bedrock (Claude 3.5/Haiku)** and **OpenSearch** for fast, high-accuracy regulatory lookups.
+- **YouTube Integration**: Robust video downloading directly from YouTube using `yt-dlp`.
+- **Automated Video Indexing**: Advanced visual analysis using **AWS Rekognition** for label detection and metadata extraction.
+- **Intelligent RAG**: Context-aware auditing using **AWS Bedrock (Claude / Opus)** and **OpenSearch** for fast, high-accuracy regulatory lookups.
 - **Structured LLMops**: Orchestrated workflows via **LangGraph** to ensure reliable, multi-node processing (Indexer -> Auditor).
 - **Proactive Cleaning**: Automated temporary file management and secure storage in **Amazon S3**.
+
+---
+
+## 🔄 Workflow
+
+The BotoCop pipeline follows a structured, multi-step process for each video:
+
+1.  **Ingestion**: Downloads video from YouTube/URL using `yt-dlp`.
+2.  **Indexing**: Local video is uploaded to **Amazon S3** for persistent storage.
+3.  **Analysis**: **AWS Rekognition** starts a label detection job on the S3 object.
+4.  **Retrieval**: The **Auditor Node** retrieves compliance rules from **OpenSearch** based on video context.
+5.  **Audit**: **AWS Bedrock (Claude Opus)** performs a deep analysis comparing video metadata against guidelines.
+6.  **Reporting**: Generates a structured JSON compliance report with severity levels and action items.
 
 ---
 
@@ -17,50 +31,57 @@
 
 ```mermaid
 graph TD
-    A[Video Input] --> B[Indexer Node]
-    B --> C{AWS Rekognition}
-    C --> D[Metadata/Insights Extraction]
-    D --> E[Auditor Node]
-    E --> F[OpenSearch - Regulatory RAG]
-    F --> G[AWS Bedrock - LLM Audit]
-    G --> H[Compliance Report]
+    A[YouTube/Video URL] --> B[Indexer Node]
+    B --> C[yt-dlp Download]
+    C --> D[Amazon S3 Upload]
+    D --> E{AWS Rekognition}
+    E --> F[Metadata Extraction]
+    F --> G[Auditor Node]
+    G --> H[OpenSearch - Regulatory RAG]
+    H --> I[AWS Bedrock - LLM Audit]
+    I --> J[Compliance Report]
 ```
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Framework**: LangChain, LangGraph
-- **Cloud Infrastructure**: AWS (S3, Rekognition, OpenSearch, Bedrock)
-- **Model**: Anthropic Claude 3.5 Sonnet (via Amazon Bedrock)
-- **Database**: Amazon OpenSearch Service (Vector Store)
-- **Language**: Python 3.12+ (managed by `uv`)
+- **Orchestration**: LangGraph, LangChain
+- **Visual Analysis**: AWS Rekognition
+- **LLM Engine**: Amazon Bedrock (Anthropic Claude)
+- **Vector Database**: Amazon OpenSearch Service
+- **Storage**: Amazon S3
+- **Video Processing**: yt-dlp
+- **Language**: Python 3.13+ (managed by `uv`)
 
 ---
 
 ## ⚙️ Environment Configuration
 
-Ensure your `.env` file is configured with the following parameters:
+Ensure your `.ENV` file is configured with the following parameters (note the specific mappings for AWS credentials):
 
 ```bash
-# AWS Connectivity
+# AWS Region
 REGION="eu-north-1"
-AWS_STORAGE_CONNECTION_STRING="your_connection_string"
 
-# LLM & Embeddings
+# AWS Credentials Mapping
+AWS_STORAGE_CONNECTION_STRING="your_aws_access_key"
+AWS_OPEN_AI_KEY="your_aws_secret_key"
+
+# Models
 AWS_OPENAI_MODEL="anthropic.claude-opus-4-6-v1"
 AWS_OPENAI_EMBEDDING_DEPLOYMENT="amazon.titan-embed-text-v2:0"
 
-# OpenSearch Configuration
-OPENSEARCH_ENDPOINT="your_endpoint"
-OPENSEARCH_INDEX_NAME="your_index"
+# Vector Store
+AWS_SEARCH_ENDPOINT="https://your-opensearch-endpoint"
+AWS_SEARCH_INDEX_NAME="brand-compliance-rules"
 ```
 
 ---
 
 ## 📦 Installation
 
-This project uses `uv` for lightning-fast dependency management.
+This project uses `uv` for efficient dependency management.
 
 ```bash
 # Install dependencies
